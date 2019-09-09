@@ -1,4 +1,4 @@
-//! `cur_macro` - Procedural macros for `cur`.
+//! `cur_macro` - Procedural macros for `cur`
 #![warn(
     absolute_paths_not_starting_with_crate,
     anonymous_parameters,
@@ -438,7 +438,7 @@ impl TryFrom<Lit> for ScentBuilder {
         match value {
             Lit::Char(c) => Ok(ScentBuilder::Atom(c.value())),
             Lit::Str(s) => Ok(ScentBuilder::Sequence(
-                s.value().chars().map(|c| ScentBuilder::Atom(c)).collect(),
+                s.value().chars().map(ScentBuilder::Atom).collect(),
             )),
             Lit::ByteStr(..)
             | Lit::Byte(..)
