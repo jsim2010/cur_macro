@@ -72,12 +72,6 @@ use syn::{
 /// Creating `cur::Scent`s can quickly become complex and error-prone. It is intended that a user
 /// can use this procedural macro to build a `cur::Scent` that is clearly understandable using
 /// valid rust syntax.
-///
-/// # Examples
-/// ```
-/// #[scent]
-/// const HELLO_WORLD: Scent = "Hello world!";
-/// ```
 #[proc_macro_attribute]
 pub fn scent(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let ScentInput { ident, scent } = parse_macro_input!(item as ScentInput);
