@@ -1,7 +1,6 @@
 pull_request_rules:
   - name: squash standardized prs
     conditions:
-      - status-success=windows-latest - stable
       - status-success=Standardize
     actions:
       merge:

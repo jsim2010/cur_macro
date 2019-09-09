@@ -7,30 +7,30 @@ jobs:
     name: windows-latest - stable
     runs-on: windows-latest
     steps:
+      - name: Fail if not updated
+        if: github.event.action != 'opened' && github.event.action != 'synchronize'
+        env:
+          GITHUB_EVENT_ACTION: ${{ github.event.action }}
+        run: echo "Event action:" && echo "$GITHUB_EVENT_ACTION" && return 1
       - uses: actions/checkout@v1.0.0
         with:
           fetch-depth: 1
-        if: github.event.action == 'opened' || github.event.action == 'synchronize'
       - uses: hecrj/setup-rust-action@v1.0.2
         with:
           rust-version: stable
-        if: github.event.action == 'opened' || github.event.action == 'synchronize'
       - name: Build
         run: cargo build --verbose
-        if: github.event.action == 'opened' || github.event.action == 'synchronize'
       - name: Lint
         run: cargo clippy --all-targets --all-features -- -D warnings
-        if: github.event.action == 'opened' || github.event.action == 'synchronize'
       - name: Test
         run: cargo test --verbose
-        if: github.event.action == 'opened' || github.event.action == 'synchronize'
   standardize:
     name: Standardize
     needs: check
     runs-on: ubuntu-latest
     steps:
       - name: Fail if not automerging
-        if: github.event.pull_request.user.login != 'jsim2010' || !contains(github.event.pull_request.labels.*.name, 'automerge')
+        if: github.event.pull_request.user.login != 'jsim2010' && !contains(github.event.pull_request.labels.*.name, 'automerge')
         env:
           GITHUB_USER_LOGIN: ${{ github.event.pull_request.user.login }}
           GITHUB_LABEL_NAMES: ${{ github.event.pull_request.labels.*.name }}
