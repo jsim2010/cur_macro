@@ -19,3 +19,5 @@ syn = { version = "1.0.0", features = ["full", "extra-traits"] }
 
 [lib]
 proc-macro = true
+# Required to make cargo-readme work; see https://github.com/livioribeiro/cargo-readme/issues/32.
+path = "src/lib.rs"

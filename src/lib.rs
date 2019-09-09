@@ -1,4 +1,4 @@
-//! `cur_macro` - Procedural macros for `cur`
+//! `cur_macro` - Procedural macros for [`cur`]
 #![warn(
     absolute_paths_not_starting_with_crate,
     anonymous_parameters,
@@ -54,7 +54,7 @@ use core::{
 };
 use proc_macro::TokenStream;
 use proc_macro2::{
-    Delimiter, Group, Ident as Ident2, Literal, Punct, Spacing, Span, TokenStream as TokenStream2,
+    Delimiter, Group, Literal, Punct, Spacing, Span, TokenStream as TokenStream2,
     TokenTree,
 };
 use quote::{quote, ToTokens, TokenStreamExt};
@@ -67,7 +67,17 @@ use syn::{
     RangeLimits,
 };
 
-/// Converts the expression of a const item to be a [`Scent`].
+/// Converts `item` such that its expression is a `cur::Scent`.
+///
+/// Creating `cur::Scent`s can quickly become complex and error-prone. It is intended that a user
+/// can use this procedural macro to build a `cur::Scent` that is clearly understandable using
+/// valid rust syntax.
+///
+/// # Examples
+/// ```
+/// #[scent]
+/// const HELLO_WORLD: Scent = "Hello world!";
+/// ```
 #[proc_macro_attribute]
 pub fn scent(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let ScentInput { ident, scent } = parse_macro_input!(item as ScentInput);
@@ -182,16 +192,16 @@ impl ScentBuilder {
 
 impl ToTokens for ScentBuilder {
     fn to_tokens(&self, tokens: &mut TokenStream2) {
-        tokens.append(Ident2::new("Scent", Span::call_site()));
+        tokens.append(Ident::new("Scent", Span::call_site()));
         tokens.append(Punct::new(':', Spacing::Joint));
         tokens.append(Punct::new(':', Spacing::Alone));
 
         match self {
             Self::Clear => {
-                tokens.append(Ident2::new("Clear", Span::call_site()));
+                tokens.append(Ident::new("Clear", Span::call_site()));
             }
             Self::Atom(c) => {
-                tokens.append(Ident2::new("Atom", Span::call_site()));
+                tokens.append(Ident::new("Atom", Span::call_site()));
                 tokens.append(Group::new(
                     Delimiter::Parenthesis,
                     TokenTree::from(Literal::character(*c)).into(),
@@ -201,7 +211,7 @@ impl ToTokens for ScentBuilder {
                 let mut element_list = TokenStream2::new();
                 let mut element_array = TokenStream2::new();
 
-                tokens.append(Ident2::new("Sequence", Span::call_site()));
+                tokens.append(Ident::new("Sequence", Span::call_site()));
 
                 element_array.append(Punct::new('&', Spacing::Alone));
 
@@ -221,7 +231,7 @@ impl ToTokens for ScentBuilder {
                 let mut branch_array = TokenStream2::new();
                 let mut branch_list = TokenStream2::new();
 
-                tokens.append(Ident2::new("Union", Span::call_site()));
+                tokens.append(Ident::new("Union", Span::call_site()));
 
                 branch_array.append(Punct::new('&', Spacing::Alone));
 
@@ -240,7 +250,7 @@ impl ToTokens for ScentBuilder {
             Self::Repetition(scent, desire) => {
                 let mut repetition_args = TokenStream2::new();
 
-                tokens.append(Ident2::new("Repetition", Span::call_site()));
+                tokens.append(Ident::new("Repetition", Span::call_site()));
 
                 repetition_args.append(Punct::new('&', Spacing::Alone));
                 scent.to_tokens(&mut repetition_args);
@@ -459,6 +469,9 @@ struct ScentRepeater {
     /// The smallest number of repeats.
     minimum: usize,
     /// The largest number of repeats.
+    ///
+    /// A number <= `minimum` indicates the [`ScentBuilder`] must be repeated exactly
+    /// `minimum` times.
     maximum: usize,
 }
 
@@ -583,13 +596,13 @@ enum CastBuilder {
 
 impl ToTokens for CastBuilder {
     fn to_tokens(&self, tokens: &mut TokenStream2) {
-        tokens.append(Ident2::new("Cast", Span::call_site()));
+        tokens.append(Ident::new("Cast", Span::call_site()));
         tokens.append(Punct::new(':', Spacing::Joint));
         tokens.append(Punct::new(':', Spacing::Alone));
 
         match self {
-            Self::Minimum => tokens.append(Ident2::new("Minimum", Span::call_site())),
-            Self::Maximum => tokens.append(Ident2::new("Maximum", Span::call_site())),
+            Self::Minimum => tokens.append(Ident::new("Minimum", Span::call_site())),
+            Self::Maximum => tokens.append(Ident::new("Maximum", Span::call_site())),
         }
     }
 }
