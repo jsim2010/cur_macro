@@ -1,4 +1,4 @@
-//! cur_macro - Proc_macros for `cur`.
+//! `cur_macro` - Procedural macros for `cur`.
 #![warn(
     absolute_paths_not_starting_with_crate,
     anonymous_parameters,
