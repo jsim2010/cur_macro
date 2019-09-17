@@ -25,7 +25,10 @@ fn string() {
     #[scent]
     const STR: Scent = "abc";
 
-    assert_eq!(STR, Scent::Sequence(&[Scent::Atom('a'), Scent::Atom('b'), Scent::Atom('c')]));
+    assert_eq!(
+        STR,
+        Scent::Sequence(&[Scent::Atom('a'), Scent::Atom('b'), Scent::Atom('c')])
+    );
 }
 
 /// Parenthesis is replaced by [`Scent`] of the expression inside.

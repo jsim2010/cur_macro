@@ -48,13 +48,10 @@ extern crate alloc;
 extern crate proc_macro;
 
 use alloc::{boxed::Box, vec, vec::Vec};
-use core::{
-    convert::{TryFrom, TryInto},
-};
+use core::convert::{TryFrom, TryInto};
 use proc_macro::TokenStream;
 use proc_macro2::{
-    Delimiter, Group, Literal, Punct, Spacing, Span, TokenStream as TokenStream2,
-    TokenTree,
+    Delimiter, Group, Literal, Punct, Spacing, Span, TokenStream as TokenStream2, TokenTree,
 };
 use quote::{quote, ToTokens, TokenStreamExt};
 use syn::{
@@ -234,10 +231,7 @@ impl ToTokens for ScentBuilder {
                 range_values.append(Punct::new(',', Spacing::Alone));
                 range_values.append(Literal::character(*end));
 
-                tokens.append(Group::new(
-                    Delimiter::Parenthesis,
-                    range_values,
-                ));
+                tokens.append(Group::new(Delimiter::Parenthesis, range_values));
             }
             Self::Sequence(elements) => {
                 let mut element_list = TokenStream2::new();
@@ -394,7 +388,9 @@ impl TryFrom<ExprIndex> for ScentBuilder {
 
     fn try_from(value: ExprIndex) -> Result<Self, Self::Error> {
         let repeater = ScentRepeater::try_from(*value.index)?;
-        (*value.expr).try_into().map(|scent: Self| scent.repeat(&repeater))
+        (*value.expr)
+            .try_into()
+            .map(|scent: Self| scent.repeat(&repeater))
     }
 }
 
@@ -411,8 +407,12 @@ impl TryFrom<ExprRange> for ScentBuilder {
 
     fn try_from(value: ExprRange) -> Result<Self, Self::Error> {
         Ok(ScentBuilder::Range(
-            value.from.map_or(Ok('\u{0}'), |from| Self::char_try_from_expr(*from))?,
-            value.to.map_or(Ok('\u{10ffff}'), |to| Self::char_try_from_expr(*to))?
+            value
+                .from
+                .map_or(Ok('\u{0}'), |from| Self::char_try_from_expr(*from))?,
+            value
+                .to
+                .map_or(Ok('\u{10ffff}'), |to| Self::char_try_from_expr(*to))?,
         ))
     }
 }
@@ -430,9 +430,7 @@ impl TryFrom<ExprUnary> for ScentBuilder {
 
     fn try_from(value: ExprUnary) -> Result<Self, Self::Error> {
         match *value.expr {
-            Expr::Try(..) | Expr::Index(..) => {
-                Self::try_from(*value.expr).map(Self::minimize_cast)
-            }
+            Expr::Try(..) | Expr::Index(..) => Self::try_from(*value.expr).map(Self::minimize_cast),
             Expr::Path(..)
             | Expr::Lit(..)
             | Expr::Binary(..)
@@ -637,9 +635,12 @@ impl ToTokens for CastBuilder {
         tokens.append(Ident::new("Cast", Span::call_site()));
         tokens.append(Punct::new(':', Spacing::Joint));
         tokens.append(Punct::new(':', Spacing::Alone));
-        tokens.append(Ident::new(match self {
-            Self::Minimum => "Minimum",
-            Self::Maximum => "Maximum",
-        }, Span::call_site()));
+        tokens.append(Ident::new(
+            match self {
+                Self::Minimum => "Minimum",
+                Self::Maximum => "Maximum",
+            },
+            Span::call_site(),
+        ));
     }
 }
