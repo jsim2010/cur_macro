@@ -48,14 +48,10 @@ extern crate alloc;
 extern crate proc_macro;
 
 use alloc::{boxed::Box, vec, vec::Vec};
-use core::{
-    convert::{TryFrom, TryInto},
-    ops::Deref,
-};
+use core::convert::{TryFrom, TryInto};
 use proc_macro::TokenStream;
 use proc_macro2::{
-    Delimiter, Group, Literal, Punct, Spacing, Span, TokenStream as TokenStream2,
-    TokenTree,
+    Delimiter, Group, Literal, Punct, Spacing, Span, TokenStream as TokenStream2, TokenTree,
 };
 use quote::{quote, ToTokens, TokenStreamExt};
 use syn::{
@@ -63,15 +59,23 @@ use syn::{
     parse_macro_input, Ident, ItemConst,
 };
 use syn::{
-    BinOp, Error, Expr, ExprBinary, ExprPath, ExprRange, ExprRepeat, ExprTry, ExprUnary, Lit,
+    BinOp, Error, Expr, ExprBinary, ExprIndex, ExprPath, ExprRange, ExprTry, ExprUnary, Lit,
     RangeLimits,
 };
 
-/// Converts `item` such that its expression is a `cur::Scent`.
+/// Converts `item` into a `cur::Scent`.
 ///
 /// Creating `cur::Scent`s can quickly become complex and error-prone. It is intended that a user
 /// can use this procedural macro to build a `cur::Scent` that is clearly understandable using
 /// valid rust syntax.
+///
+/// # Example(s)
+/// ```
+/// use cur::{scent, Scent};
+///
+/// #[scent]
+/// const HELLO_WORLD: Scent = "Hello world!";
+/// ```
 #[proc_macro_attribute]
 pub fn scent(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let ScentInput { ident, scent } = parse_macro_input!(item as ScentInput);
@@ -110,6 +114,8 @@ enum ScentBuilder {
     Clear,
     /// Maps to [`Scent::Atom`].
     Atom(char),
+    /// Maps to [`Scent::Range`].
+    Range(char, char),
     /// Maps to [`Scent::Union`].
     Union(Vec<ScentBuilder>),
     /// Maps to [`Scent::Sequence`].
@@ -179,7 +185,22 @@ impl ScentBuilder {
 
                 Self::Union(branches)
             }
-            Self::Atom(..) | Self::Clear => self,
+            Self::Range(..) | Self::Atom(..) | Self::Clear => self,
+        }
+    }
+
+    /// Converts `expr` to a [`char`].
+    ///
+    /// [`Err`] indicates `expr` is unable to be converted.
+    fn char_try_from_expr(expr: Expr) -> ParseResult<char> {
+        if let Expr::Lit(literal) = expr {
+            if let Lit::Char(c) = literal.lit {
+                Ok(c.value())
+            } else {
+                Err(Error::new_spanned(literal, "Expected char literal"))
+            }
+        } else {
+            Err(Error::new_spanned(expr, "Expected literal"))
         }
     }
 }
@@ -200,6 +221,17 @@ impl ToTokens for ScentBuilder {
                     Delimiter::Parenthesis,
                     TokenTree::from(Literal::character(*c)).into(),
                 ));
+            }
+            Self::Range(start, end) => {
+                let mut range_values = TokenStream2::new();
+
+                tokens.append(Ident::new("Range", Span::call_site()));
+
+                range_values.append(Literal::character(*start));
+                range_values.append(Punct::new(',', Spacing::Alone));
+                range_values.append(Literal::character(*end));
+
+                tokens.append(Group::new(Delimiter::Parenthesis, range_values));
             }
             Self::Sequence(elements) => {
                 let mut element_list = TokenStream2::new();
@@ -266,10 +298,11 @@ impl TryFrom<Expr> for ScentBuilder {
             Expr::Lit(literal) => literal.lit.try_into(),
             Expr::Binary(binary) => binary.try_into(),
             Expr::Paren(paren) => (*paren.expr).try_into(),
-            Expr::Repeat(repeat) => repeat.try_into(),
+            Expr::Index(index) => index.try_into(),
             Expr::Try(try_expr) => try_expr.try_into(),
             Expr::Unary(unary) => unary.try_into(),
-            Expr::Range(..)
+            Expr::Range(range) => range.try_into(),
+            Expr::Repeat(..)
             | Expr::Box(..)
             | Expr::Await(..)
             | Expr::Array(..)
@@ -289,7 +322,6 @@ impl TryFrom<Expr> for ScentBuilder {
             | Expr::Assign(..)
             | Expr::AssignOp(..)
             | Expr::Field(..)
-            | Expr::Index(..)
             | Expr::Reference(..)
             | Expr::Break(..)
             | Expr::Continue(..)
@@ -317,12 +349,9 @@ impl TryFrom<ExprBinary> for ScentBuilder {
         match value.op {
             BinOp::BitOr(..) => Ok(lhs.branch(rhs)),
             BinOp::Add(..) => {
-                if let ScentBuilder::Sequence(mut elements) = lhs {
-                    elements.push(rhs);
-                    Ok(ScentBuilder::Sequence(elements))
-                } else {
-                    Ok(ScentBuilder::Sequence(vec![lhs, rhs]))
-                }
+                let mut elements = lhs.into_elements();
+                elements.append(&mut rhs.into_elements());
+                Ok(ScentBuilder::Sequence(elements))
             }
             BinOp::BitAnd(..)
             | BinOp::Sub(..)
@@ -354,6 +383,17 @@ impl TryFrom<ExprBinary> for ScentBuilder {
     }
 }
 
+impl TryFrom<ExprIndex> for ScentBuilder {
+    type Error = Error;
+
+    fn try_from(value: ExprIndex) -> Result<Self, Self::Error> {
+        let repeater = ScentRepeater::try_from(*value.index)?;
+        (*value.expr)
+            .try_into()
+            .map(|scent: Self| scent.repeat(&repeater))
+    }
+}
+
 impl TryFrom<ExprPath> for ScentBuilder {
     type Error = Error;
 
@@ -362,14 +402,18 @@ impl TryFrom<ExprPath> for ScentBuilder {
     }
 }
 
-impl TryFrom<ExprRepeat> for ScentBuilder {
+impl TryFrom<ExprRange> for ScentBuilder {
     type Error = Error;
 
-    fn try_from(value: ExprRepeat) -> Result<Self, Self::Error> {
-        let repeater = ScentRepeater::try_from(*value.len)?;
-        (*value.expr)
-            .try_into()
-            .map(|scent: Self| scent.repeat(&repeater))
+    fn try_from(value: ExprRange) -> Result<Self, Self::Error> {
+        Ok(ScentBuilder::Range(
+            value
+                .from
+                .map_or(Ok('\u{0}'), |from| Self::char_try_from_expr(*from))?,
+            value
+                .to
+                .map_or(Ok('\u{10ffff}'), |to| Self::char_try_from_expr(*to))?,
+        ))
     }
 }
 
@@ -377,7 +421,7 @@ impl TryFrom<ExprTry> for ScentBuilder {
     type Error = Error;
 
     fn try_from(value: ExprTry) -> Result<Self, Self::Error> {
-        Self::try_from(value.expr.deref().clone()).map(|scent| scent.branch(Self::Clear))
+        Self::try_from(*value.expr).map(|scent| scent.branch(Self::Clear))
     }
 }
 
@@ -386,9 +430,7 @@ impl TryFrom<ExprUnary> for ScentBuilder {
 
     fn try_from(value: ExprUnary) -> Result<Self, Self::Error> {
         match *value.expr {
-            Expr::Try(..) | Expr::Repeat(..) => {
-                Self::try_from(*value.expr).map(Self::minimize_cast)
-            }
+            Expr::Try(..) | Expr::Index(..) => Self::try_from(*value.expr).map(Self::minimize_cast),
             Expr::Path(..)
             | Expr::Lit(..)
             | Expr::Binary(..)
@@ -414,7 +456,7 @@ impl TryFrom<ExprUnary> for ScentBuilder {
             | Expr::Assign(..)
             | Expr::AssignOp(..)
             | Expr::Field(..)
-            | Expr::Index(..)
+            | Expr::Repeat(..)
             | Expr::Reference(..)
             | Expr::Break(..)
             | Expr::Continue(..)
@@ -429,7 +471,7 @@ impl TryFrom<ExprUnary> for ScentBuilder {
             | Expr::Verbatim(..)
             | Expr::__Nonexhaustive => Err(Error::new_spanned(
                 value.expr,
-                "Expected try or repeat expression",
+                "Expected try or index expression",
             )),
         }
     }
@@ -593,10 +635,12 @@ impl ToTokens for CastBuilder {
         tokens.append(Ident::new("Cast", Span::call_site()));
         tokens.append(Punct::new(':', Spacing::Joint));
         tokens.append(Punct::new(':', Spacing::Alone));
-
-        match self {
-            Self::Minimum => tokens.append(Ident::new("Minimum", Span::call_site())),
-            Self::Maximum => tokens.append(Ident::new("Maximum", Span::call_site())),
-        }
+        tokens.append(Ident::new(
+            match self {
+                Self::Minimum => "Minimum",
+                Self::Maximum => "Maximum",
+            },
+            Span::call_site(),
+        ));
     }
 }
