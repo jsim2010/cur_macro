@@ -50,7 +50,6 @@ extern crate proc_macro;
 use alloc::{boxed::Box, vec, vec::Vec};
 use core::{
     convert::{TryFrom, TryInto},
-    ops::Deref,
 };
 use proc_macro::TokenStream;
 use proc_macro2::{
