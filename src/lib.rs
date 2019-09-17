@@ -47,7 +47,7 @@
 extern crate alloc;
 extern crate proc_macro;
 
-use alloc::{boxed::Box, vec, vec::Vec};
+use alloc::{boxed::Box, vec, vec::Vec, string::ToString};
 use core::convert::{TryFrom, TryInto};
 use proc_macro::TokenStream;
 use proc_macro2::{
@@ -60,7 +60,7 @@ use syn::{
 };
 use syn::{
     BinOp, Error, Expr, ExprBinary, ExprIndex, ExprPath, ExprRange, ExprTry, ExprUnary, Lit,
-    RangeLimits,
+    RangeLimits, Path, Visibility,
 };
 
 /// Converts `item` into a `cur::Scent`.
@@ -78,15 +78,17 @@ use syn::{
 /// ```
 #[proc_macro_attribute]
 pub fn scent(_attr: TokenStream, item: TokenStream) -> TokenStream {
-    let ScentInput { ident, scent } = parse_macro_input!(item as ScentInput);
+    let ScentInput { vis, ident, scent } = parse_macro_input!(item as ScentInput);
 
     TokenStream::from(quote! {
-        const #ident: Scent = #scent;
+        #vis const #ident: Scent = #scent;
     })
 }
 
 /// Information required to create a const [`Scent`] definition.
 struct ScentInput {
+    /// Visibility of the [`Scent`].
+    vis: Visibility,
     /// Identifier of the [`Scent`].
     ident: Ident,
     /// Information required to create the [`Scent`] tokens.
@@ -97,6 +99,7 @@ impl Parse for ScentInput {
     fn parse(input: ParseStream<'_>) -> ParseResult<Self> {
         input.parse().and_then(|item: ItemConst| {
             Ok(Self {
+                vis: item.vis,
                 ident: item.ident,
                 scent: (*item.expr).try_into()?,
             })
@@ -122,6 +125,8 @@ enum ScentBuilder {
     Sequence(Vec<ScentBuilder>),
     /// Maps to [`Scent::Repetition`].
     Repetition(Box<ScentBuilder>, CastBuilder),
+    /// Maps to the [`Path`] of a [`Scent`]
+    Path(Path),
 }
 
 impl ScentBuilder {
@@ -185,7 +190,7 @@ impl ScentBuilder {
 
                 Self::Union(branches)
             }
-            Self::Range(..) | Self::Atom(..) | Self::Clear => self,
+            Self::Path(..) | Self::Range(..) | Self::Atom(..) | Self::Clear => self,
         }
     }
 
@@ -203,19 +208,24 @@ impl ScentBuilder {
             Err(Error::new_spanned(expr, "Expected literal"))
         }
     }
+
+    /// Appends "Scent::" to `tokens`.
+    fn append_scent_tokens(tokens: &mut TokenStream2) {
+        tokens.append(Ident::new("Scent", Span::call_site()));
+        tokens.append(Punct::new(':', Spacing::Joint));
+        tokens.append(Punct::new(':', Spacing::Alone));
+    }
 }
 
 impl ToTokens for ScentBuilder {
     fn to_tokens(&self, tokens: &mut TokenStream2) {
-        tokens.append(Ident::new("Scent", Span::call_site()));
-        tokens.append(Punct::new(':', Spacing::Joint));
-        tokens.append(Punct::new(':', Spacing::Alone));
-
         match self {
             Self::Clear => {
+                Self::append_scent_tokens(tokens);
                 tokens.append(Ident::new("Clear", Span::call_site()));
             }
             Self::Atom(c) => {
+                Self::append_scent_tokens(tokens);
                 tokens.append(Ident::new("Atom", Span::call_site()));
                 tokens.append(Group::new(
                     Delimiter::Parenthesis,
@@ -223,6 +233,7 @@ impl ToTokens for ScentBuilder {
                 ));
             }
             Self::Range(start, end) => {
+                Self::append_scent_tokens(tokens);
                 let mut range_values = TokenStream2::new();
 
                 tokens.append(Ident::new("Range", Span::call_site()));
@@ -234,6 +245,7 @@ impl ToTokens for ScentBuilder {
                 tokens.append(Group::new(Delimiter::Parenthesis, range_values));
             }
             Self::Sequence(elements) => {
+                Self::append_scent_tokens(tokens);
                 let mut element_list = TokenStream2::new();
                 let mut element_array = TokenStream2::new();
 
@@ -254,6 +266,7 @@ impl ToTokens for ScentBuilder {
                 tokens.append(Group::new(Delimiter::Parenthesis, element_array));
             }
             Self::Union(branches) => {
+                Self::append_scent_tokens(tokens);
                 let mut branch_array = TokenStream2::new();
                 let mut branch_list = TokenStream2::new();
 
@@ -274,6 +287,7 @@ impl ToTokens for ScentBuilder {
                 tokens.append(Group::new(Delimiter::Parenthesis, branch_array));
             }
             Self::Repetition(scent, desire) => {
+                Self::append_scent_tokens(tokens);
                 let mut repetition_args = TokenStream2::new();
 
                 tokens.append(Ident::new("Repetition", Span::call_site()));
@@ -284,6 +298,9 @@ impl ToTokens for ScentBuilder {
                 desire.to_tokens(&mut repetition_args);
 
                 tokens.append(Group::new(Delimiter::Parenthesis, repetition_args));
+            }
+            Self::Path(path) => {
+                path.to_tokens(tokens);
             }
         }
     }
@@ -397,8 +414,14 @@ impl TryFrom<ExprIndex> for ScentBuilder {
 impl TryFrom<ExprPath> for ScentBuilder {
     type Error = Error;
 
-    fn try_from(_value: ExprPath) -> Result<Self, Self::Error> {
-        Ok(ScentBuilder::Clear)
+    fn try_from(value: ExprPath) -> Result<Self, Self::Error> {
+        if let Some(ident) = value.path.get_ident() {
+            if ident.to_string().as_str() == "None" {
+                return Ok(ScentBuilder::Clear);
+            }
+        }
+        
+        Ok(ScentBuilder::Path(value.path))
     }
 }
 
