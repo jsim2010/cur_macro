@@ -356,12 +356,9 @@ impl TryFrom<ExprBinary> for ScentBuilder {
         match value.op {
             BinOp::BitOr(..) => Ok(lhs.branch(rhs)),
             BinOp::Add(..) => {
-                if let ScentBuilder::Sequence(mut elements) = lhs {
-                    elements.push(rhs);
-                    Ok(ScentBuilder::Sequence(elements))
-                } else {
-                    Ok(ScentBuilder::Sequence(vec![lhs, rhs]))
-                }
+                let mut elements = lhs.into_elements();
+                elements.append(&mut rhs.into_elements());
+                Ok(ScentBuilder::Sequence(elements))
             }
             BinOp::BitAnd(..)
             | BinOp::Sub(..)
@@ -418,15 +415,6 @@ impl TryFrom<ExprRange> for ScentBuilder {
             value.from.map_or(Ok('\u{0}'), |from| Self::char_try_from_expr(*from))?,
             value.to.map_or(Ok('\u{10ffff}'), |to| Self::char_try_from_expr(*to))?
         ))
-
-            //maximum: value.clone().to.map_or(Ok(usize::max_value()), |to| {
-            //    Self::usize_try_from_expr(*to).map(|max| {
-            //        max.saturating_sub(if let RangeLimits::HalfOpen(..) = value.limits {
-            //            1
-            //        } else {
-            //            0
-            //        })
-            //    })
     }
 }
 
@@ -434,7 +422,7 @@ impl TryFrom<ExprTry> for ScentBuilder {
     type Error = Error;
 
     fn try_from(value: ExprTry) -> Result<Self, Self::Error> {
-        Self::try_from(value.expr.deref().clone()).map(|scent| scent.branch(Self::Clear))
+        Self::try_from(*value.expr).map(|scent| scent.branch(Self::Clear))
     }
 }
 
@@ -650,10 +638,9 @@ impl ToTokens for CastBuilder {
         tokens.append(Ident::new("Cast", Span::call_site()));
         tokens.append(Punct::new(':', Spacing::Joint));
         tokens.append(Punct::new(':', Spacing::Alone));
-
-        match self {
-            Self::Minimum => tokens.append(Ident::new("Minimum", Span::call_site())),
-            Self::Maximum => tokens.append(Ident::new("Maximum", Span::call_site())),
-        }
+        tokens.append(Ident::new(match self {
+            Self::Minimum => "Minimum",
+            Self::Maximum => "Maximum",
+        }, Span::call_site()));
     }
 }
